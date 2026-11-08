@@ -6,6 +6,8 @@ const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const booksDir = path.join(rootDir, 'LivrosDev');
 const coversDir = path.join(rootDir, 'assets', 'img');
 const outputFile = path.join(rootDir, 'index.html');
+// Share previews need absolute URLs.
+const siteUrl = 'https://kayokg.github.io/BibliotecaDev/';
 
 const categoryOrder = [
   'Algoritmos e Fundamentos',
@@ -295,6 +297,85 @@ function renderBook(book) {
           </article>`;
 }
 
+const spinePalette = [
+  ['#7b1e2b', '#fff'],
+  ['#5f8fc2', '#fff'],
+  ['#1c1c1c', '#fff'],
+  ['#e2a72a', '#171717'],
+  ['#5c4f78', '#fff'],
+  ['#ece9e2', '#171717'],
+  ['#2f5d50', '#fff'],
+  ['#b5532f', '#fff'],
+];
+
+// One featured book per category keeps the hero varied without manual curation.
+function pickFeatured(books) {
+  return categoryOrder
+    .map((category) => books.find((book) => book.category === category && book.cover))
+    .filter(Boolean);
+}
+
+function renderRackBook(book, index, activeIndex) {
+  const title = escapeHtml(book.title);
+  const [spine, ink] = spinePalette[index % spinePalette.length];
+
+  return `
+        <a class="rack-book${index === activeIndex ? ' is-active' : ''}" href="${escapeHtml(book.pdfHref)}" target="_blank" rel="noopener"
+          data-rack-book data-title="${title}" data-author="${escapeHtml(book.author)}" data-category="${escapeHtml(book.category)}"
+          data-section="#${encodeURIComponent(book.category)}" style="--spine-bg: ${spine}; --spine-ink: ${ink};"
+          aria-label="${title} — abrir PDF">
+          <span class="book-3d">
+            <span class="book-face book-front"><img src="${book.coverHref}" alt="" width="206" height="300"></span>
+            <span class="book-face book-spine" aria-hidden="true"><span>${title}</span></span>
+          </span>
+        </a>`;
+}
+
+// Every category becomes a themed shelf in an inert <template>; the page draws one at random per visit.
+function renderShelves(books) {
+  return categoryOrder
+    .map((category) => {
+      const shelf = books.filter((book) => book.category === category && book.cover);
+      if (!shelf.length) return '';
+      return `    <template data-shelf="${escapeHtml(category)}">${shelf.map((book, index) => renderRackBook(book, index, -1)).join('')}
+    </template>`;
+    })
+    .join('\n');
+}
+
+function renderRack(books) {
+  const featured = pickFeatured(books);
+  const activeIndex = Math.floor(featured.length / 2);
+  const active = featured[activeIndex];
+
+  return `
+  <section class="intro" id="top" aria-labelledby="heroTitle">
+    <span class="eyebrow">Leitura para quem constrói software</span>
+    <h1>BibliotecaDev</h1>
+    <p class="rack-hint"><span class="hint-hover">Passe o mouse para virar a capa · clique para abrir o PDF</span><span class="hint-touch">Deslize o dedo pelos livros · toque para abrir o PDF</span></p>
+
+    <p class="rack-shelf" data-shelf-label>Um de cada categoria</p>
+
+    <div class="rack" data-rack>
+      <div class="rack-row" data-rack-row>
+        <noscript>
+${featured.map((book, index) => renderRackBook(book, index, activeIndex)).join('\n')}
+        </noscript>
+      </div>
+    </div>
+${renderShelves(books)}
+
+    <div class="rack-detail" aria-live="polite">
+      <h2 id="heroTitle" data-detail-title>${escapeHtml(active.title)}</h2>
+      <p data-detail-meta>${escapeHtml(active.author)} · ${escapeHtml(active.category)}</p>
+      <div class="rack-actions">
+        <a class="btn-solid" data-detail-open href="${escapeHtml(active.pdfHref)}" target="_blank" rel="noopener">Abrir PDF</a>
+        <a class="btn-outline" data-detail-section href="#${encodeURIComponent(active.category)}">Ver categoria</a>
+      </div>
+    </div>
+  </section>`;
+}
+
 function renderSection(category, books) {
   const description = categoryDescriptions[category] || 'Livros disponíveis localmente.';
   const cards = books.map(renderBook).join('\n');
@@ -349,7 +430,23 @@ function renderHtml(books) {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BibliotecaDev</title>
+  <title>BibliotecaDev — livros de tecnologia em PDF</title>
+  <meta name="description" content="${books.length} livros de programação, arquitetura, DevOps, cloud, dados, agilidade e carreira para ler em PDF, organizados por categoria.">
+  <link rel="canonical" href="${siteUrl}">
+  <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta name="theme-color" content="#ffffff">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:site_name" content="BibliotecaDev">
+  <meta property="og:title" content="BibliotecaDev — livros de tecnologia em PDF">
+  <meta property="og:description" content="${books.length} livros de programação, arquitetura, DevOps, dados e carreira, organizados por categoria.">
+  <meta property="og:url" content="${siteUrl}">
+  <meta property="og:image" content="${siteUrl}assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="BibliotecaDev: estante com lombadas coloridas de livros">
+  <meta name="twitter:card" content="summary_large_image">
   <style>
     :root {
       color-scheme: light;
@@ -528,6 +625,7 @@ function renderHtml(books) {
     }
 
     .header-shell {
+      margin: 0 auto;
       width: min(1480px, calc(100% - 64px));
       min-height: 92px;
       padding: 0;
@@ -610,12 +708,221 @@ function renderHtml(books) {
       text-transform: uppercase;
     }
 
-    .intro p {
-      max-width: 660px;
-      margin: 18px auto 0;
-      color: #666;
-      font-size: 0.95rem;
+    .hint-touch { display: none; }
+    @media (hover: none) {
+      .hint-hover { display: none; }
+      .hint-touch { display: inline; }
     }
+
+    .rack-shelf {
+      margin: 34px 0 0;
+      color: #171717;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+
+    .rack-hint {
+      margin: 14px 0 0;
+      color: #8a8a8a;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* Hero rack: books hang on a rod showing the spine and turn to the cover on hover/focus. */
+    .rack {
+      --cover-w: 206px;
+      --cover-h: 300px;
+      --thick: 46px;
+      --rest: 84px;
+      --fade: 7%;
+      position: relative;
+      margin: 40px auto 0;
+      padding: 34px 32px 72px;
+      /* fade every edge into the page so the clipped scroll area never shows a seam */
+      -webkit-mask-image: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+      mask-image: linear-gradient(90deg, transparent, #000 var(--fade), #000 calc(100% - var(--fade)), transparent);
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .rack::-webkit-scrollbar { display: none; }
+
+    .rack-row {
+      position: relative;
+      width: max-content;
+      min-width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: clamp(22px, 3vw, 44px);
+      padding: 46px 28px 0;
+    }
+
+    /* the rod */
+    .rack-row::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 5px;
+      border: 1px solid #a9a9a9;
+      border-radius: 3px;
+      background: linear-gradient(#fafafa, #cfcfcf);
+    }
+
+    .rack-book {
+      position: relative;
+      flex: 0 0 var(--rest);
+      height: var(--cover-h);
+      perspective: 1400px;
+      transition: flex-basis 600ms cubic-bezier(0.22, 1, 0.36, 1);
+      outline: none;
+    }
+
+    /* the hook */
+    .rack-book::before {
+      content: "";
+      position: absolute;
+      top: -46px;
+      left: 50%;
+      width: 12px;
+      height: 46px;
+      margin-left: -6px;
+      border: 1.5px solid #8d8d8d;
+      border-bottom: 0;
+      border-radius: 6px 6px 0 0;
+      clip-path: inset(0 0 0 50%);
+    }
+
+    .rack-book.is-active { flex-basis: var(--cover-w); }
+
+    .book-3d {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: var(--cover-w);
+      height: var(--cover-h);
+      margin-left: calc(var(--cover-w) / -2);
+      transform-style: preserve-3d;
+      transform: rotateY(78deg);
+      transition: transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .rack-book.is-active .book-3d { transform: rotateY(0deg) scale(1.06); }
+    @media (hover: hover) {
+      .rack-book:not(.is-active):hover .book-3d { transform: rotateY(66deg); }
+    }
+
+    .book-face {
+      position: absolute;
+      top: 0;
+      height: 100%;
+      backface-visibility: hidden;
+    }
+
+    .book-front {
+      left: 0;
+      width: 100%;
+      transform: translateZ(calc(var(--thick) / 2));
+      background: #f1f1f1;
+      box-shadow: 0 22px 36px -14px rgba(0, 0, 0, 0.24), 0 6px 14px -8px rgba(0, 0, 0, 0.12);
+    }
+
+    .book-front img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+    }
+
+    /* binding crease */
+    .book-front::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(0, 0, 0, 0.22), rgba(255, 255, 255, 0.18) 3%, transparent 7%);
+    }
+
+    .book-spine {
+      left: calc((var(--cover-w) - var(--thick)) / 2);
+      width: var(--thick);
+      transform: rotateY(-90deg) translateZ(calc(var(--cover-w) / 2));
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      padding: 18px 0;
+      background:
+        linear-gradient(90deg, rgba(0, 0, 0, 0.28), rgba(255, 255, 255, 0.14) 38%, rgba(0, 0, 0, 0.22)),
+        var(--spine-bg);
+      color: var(--spine-ink);
+    }
+
+    .book-spine span {
+      max-height: 100%;
+      overflow: hidden;
+      writing-mode: vertical-rl;
+      transform: rotate(180deg);
+      font-size: 0.66rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .rack-book:focus-visible .book-front,
+    .rack-book:focus-visible .book-spine {
+      outline: 2px solid #171717;
+      outline-offset: 4px;
+    }
+
+    .rack-detail {
+      max-width: 820px;
+      margin: -20px auto 0;
+    }
+
+    .rack-detail h2 {
+      margin: 0;
+      font-size: clamp(1.6rem, 3.4vw, 3rem);
+      font-weight: 400;
+      line-height: 1.12;
+      letter-spacing: -0.01em;
+    }
+
+    .rack-detail p {
+      margin: 14px 0 0;
+      color: #555;
+      font-size: 0.86rem;
+    }
+
+    .rack-actions {
+      display: flex;
+      justify-content: center;
+      gap: 14px;
+      margin-top: 26px;
+    }
+
+    .btn-solid,
+    .btn-outline {
+      min-width: 220px;
+      min-height: 50px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 24px;
+      border: 1px solid #171717;
+      font-size: 0.82rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+    }
+
+    .btn-solid { background: #171717; color: #fff; }
+    .btn-outline { background: #fff; color: #171717; border-color: #d4d4d4; }
+    .btn-solid:hover, .btn-solid:focus-visible { background: #fff; color: #171717; }
+    .btn-outline:hover, .btn-outline:focus-visible { border-color: #171717; }
 
     .toolbar {
       position: relative;
@@ -628,6 +935,7 @@ function renderHtml(books) {
     }
 
     .toolbar-shell {
+      margin: 0 auto;
       width: min(1480px, calc(100% - 64px));
       padding: 0;
       display: grid;
@@ -831,6 +1139,7 @@ function renderHtml(books) {
     }
 
     .page-footer {
+      margin: 0 auto;
       width: min(1480px, calc(100% - 64px));
       padding: 28px 0;
       border-top: 1px solid #e4e4e4;
@@ -858,6 +1167,14 @@ function renderHtml(books) {
       .brand-sub, .github-link { font-size: 0.62rem; }
       .intro { padding: 52px 0 40px; }
       .intro h1 { font-size: 1.7rem; }
+      /* All books fit the screen: no horizontal scroll, so a sideways swipe scrubs the rack. */
+      .rack { --cover-w: 36vw; --cover-h: 52vw; --thick: 4.5vw; --rest: 6.5vw; --fade: 2%; margin: 24px -14px 0; padding: 30px 0 60px; overflow: hidden; touch-action: pan-y; }
+      .rack-row { gap: 1.5vw; padding-left: 2vw; padding-right: 2vw; }
+      .book-3d { transform: rotateY(84deg); }
+      .book-spine { padding: 10px 0; }
+      .book-spine span { font-size: 0.5rem; letter-spacing: 0.1em; }
+      .rack-actions { flex-direction: column; align-items: stretch; }
+      .btn-solid, .btn-outline { min-width: 0; }
       .filter-row { gap: 24px; }
       .filter-button { min-height: 58px; }
       .search-row { grid-template-columns: 1fr; }
@@ -878,7 +1195,9 @@ function renderHtml(books) {
         scroll-behavior: auto;
       }
 
-      .book-card {
+      .book-card,
+      .rack-book,
+      .book-3d {
         transition: none;
       }
     }
@@ -901,11 +1220,7 @@ function renderHtml(books) {
     </div>
   </header>
 
-  <section class="intro" id="top">
-    <span class="eyebrow">Leitura para quem constrói software</span>
-    <h1>BibliotecaDev</h1>
-    <p>Explore livros de tecnologia por categoria, encontre um título e abra o PDF direto no navegador.</p>
-  </section>
+${renderRack(books)}
 
   <div class="toolbar" id="categorias">
     <div class="toolbar-shell">
@@ -982,6 +1297,76 @@ ${sections}
         applyFilters();
       });
     }
+
+    // Random themed shelf per visit: one category, or one book from each. Never the same theme twice in a row.
+    const spinePalette = ${JSON.stringify(spinePalette)};
+    const shelves = [...document.querySelectorAll('template[data-shelf]')];
+    const shuffle = (list) => {
+      for (let i = list.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [list[i], list[j]] = [list[j], list[i]];
+      }
+      return list;
+    };
+    const shelfBooks = (template) => [...template.content.children].map((node) => node.cloneNode(true));
+    let lastTheme = null;
+    try { lastTheme = localStorage.getItem('bibliotecadev-shelf'); } catch {}
+    const themes = ['mix', ...shelves.map((template) => template.dataset.shelf)].filter((theme) => theme !== lastTheme);
+    const theme = themes[Math.floor(Math.random() * themes.length)];
+    try { localStorage.setItem('bibliotecadev-shelf', theme); } catch {}
+
+    const shelf = theme === 'mix'
+      ? shelves.map((template) => shuffle(shelfBooks(template))[0])
+      : shuffle(shelfBooks(shelves.find((template) => template.dataset.shelf === theme))).slice(0, 8);
+    shelf.forEach((book, index) => {
+      const [spine, ink] = spinePalette[index % spinePalette.length];
+      book.style.setProperty('--spine-bg', spine);
+      book.style.setProperty('--spine-ink', ink);
+    });
+    document.querySelector('[data-rack-row]').replaceChildren(...shelf);
+    document.querySelector('[data-shelf-label]').textContent = theme === 'mix' ? 'Um de cada categoria' : 'Estante · ' + theme;
+
+    const rackBooks = [...document.querySelectorAll('[data-rack-book]')];
+    const detailTitle = document.querySelector('[data-detail-title]');
+    const detailMeta = document.querySelector('[data-detail-meta]');
+    const detailOpen = document.querySelector('[data-detail-open]');
+    const detailSection = document.querySelector('[data-detail-section]');
+
+    function activateBook(book) {
+      if (book.classList.contains('is-active')) return;
+      rackBooks.forEach((item) => item.classList.toggle('is-active', item === book));
+      detailTitle.textContent = book.dataset.title;
+      detailMeta.textContent = book.dataset.author + ' · ' + book.dataset.category;
+      detailOpen.href = book.href;
+      detailSection.href = book.dataset.section;
+    }
+
+    for (const book of rackBooks) {
+      book.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') activateBook(book);
+      });
+      book.addEventListener('focus', () => activateBook(book));
+    }
+
+    // Touch scrub: sliding a finger across the rack turns the book under it, like hover.
+    // A plain tap still reaches the link and opens the PDF. Touch pointers are captured
+    // by the element they start on, so hit-test the finger position instead of event.target.
+    const rack = document.querySelector('[data-rack]');
+    function scrub(event) {
+      if (event.pointerType === 'mouse') return;
+      const hit = document.elementFromPoint(event.clientX, event.clientY);
+      const book = hit && hit.closest('[data-rack-book]');
+      if (book) activateBook(book);
+    }
+    rack.addEventListener('pointerdown', scrub);
+    rack.addEventListener('pointermove', scrub);
+    activateBook(rackBooks[Math.floor(rackBooks.length / 2)]);
+
+    // The target section may be hidden by an active filter or search.
+    detailSection.addEventListener('click', () => {
+      search.value = '';
+      document.querySelector('[data-category-filter="all"]').click();
+    });
   </script>
 </body>
 </html>
